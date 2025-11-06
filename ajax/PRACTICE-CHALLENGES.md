@@ -30,6 +30,32 @@
 // Write your solution here
 async function safeFetch(url, options = {}) {
   // Your code here
+  const controller = new AbortController();
+  const timerId = setTimeout(() => controller.abort(), 5000);
+
+  try{
+    const fetchResponse = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+
+    clearTimeout(timerId);
+    
+    if(!fetchResponse.ok) {
+      `HTTP Error ${response.status}: ${response.statusText}`
+    }
+
+    return await fetchResponse.json();
+
+  } catch(error) {
+    clearTimeout(timerId);
+
+    if(error.name == 'AbortError') {
+      throw new Error('Request timeout after 5 seconds');
+    }
+
+    throw error;
+  }
 }
 
 // Test it
@@ -51,8 +77,43 @@ safeFetch('/api/users')
 
 ```javascript
 // Write your solution here
-async function fetchDashboardData() {
-  // Your code here
+async function fetchDashboardData(url) {
+  const endpoints = {
+    users: 'https://jsonplaceholder.typicode.com/users',
+    posts: 'https://jsonplaceholder.typicode.com/posts',
+    comments: 'https://jsonplaceholder.typicode.com/comments'
+  };
+
+  // Wrap each fetch in a promise that never rejects
+  const fetchSafe = async (key, url) => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Failed to fetch ${key}`);
+      return { key, data: await response.json(), error: null };
+    } catch (error) {
+      return { key, data: null, error: error.message };
+    }
+  };
+
+  // Fetch all in parallel
+  const results = await Promise.all([
+    fetchSafe('users', endpoints.users),
+    fetchSafe('posts', endpoints.posts),
+    fetchSafe('comments', endpoints.comments)
+  ]);
+
+  // Organize results
+  const output = { errors: [] };
+  results.forEach(({ key, data, error }) => {
+    if (error) {
+      output.errors.push({ [key]: error });
+      output[key] = null;
+    } else {
+      output[key] = data;
+    }
+  });
+
+  return output;
 }
 
 // Usage
@@ -76,6 +137,41 @@ console.log(data.users, data.posts, data.comments);
 // Write your solution here
 async function fetchUserPostComments(userId) {
   // Your code here
+  try {
+    const userResponse = await fetch(
+      `https://jsonplaceholder.typicode.com/users/${userId}`
+    );
+
+    if(!userResponse.ok) {
+      throw new Error('Failed to fetch user');
+    }
+
+    const user = await userResponse.json();
+
+    const postsResponse = await fetch(
+      `https://jsonplaceholder.typicode.com/posts?userId=${user.id}`
+    );
+
+    if(!postsResponse.ok) {
+      throw new Error('Failed to fetch posts');
+    }
+
+    const posts = await userResponse.json();
+
+    const commentsResponse = await fetch(
+      `https://jsonplaceholder.typicode.com/comments?postId=${posts[0].id}`
+    );
+
+    if(!commentsResponse.ok) {
+      throw new Error('Failed to fetch comments');
+    }
+
+    const comments = await commentsResponse.json();
+
+    return {user, posts, comments};
+  } catch (error) {
+    throw new Error(`Sequential fetch failed: ${error.message}`);
+  }
 }
 
 // Usage
